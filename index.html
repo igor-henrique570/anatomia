@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Atlas de Anatomia Humana 3D - Osteologia e Artrologia</title>
+  
+  <!-- Estilos Customizados -->
+  <link rel="stylesheet" href="css/styles.css" />
+
+  <!-- Dependências locais para uso sem internet -->
+  <script src="js/lib/three.min.js"></script>
+  <script src="js/lib/OrbitControls.js"></script>
+  <script src="js/lib/GLTFLoader.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#canvas-container">Ir para o visualizador 3D</a>
+  <div id="app-root">
+    <!-- CABEÇALHO SUPERIOR -->
+    <header class="app-header">
+      <div class="brand-section">
+        <div class="brand-logo-icon">🦴</div>
+        <div>
+          <h1 class="brand-title">Atlas Anatômico 3D</h1>
+          <p class="brand-subtitle">Osteologia & Artrologia Humana</p>
+        </div>
+      </div>
+
+      <!-- Abas Principais de Navegação -->
+      <nav class="header-nav" aria-label="Modos do atlas">
+        <button class="nav-tab-btn active" data-mode="atlas">
+          <span>📖</span> Atlas de Ossos
+        </button>
+        <button class="nav-tab-btn" data-mode="joints">
+          <span>🔄</span> Articulações & Movimento
+        </button>
+        <button class="nav-tab-btn" data-mode="generator">
+          <span>⚙️</span> Gerador & Modelador 3D
+        </button>
+        <button class="nav-tab-btn" data-mode="skeleton">
+          <span>🧍</span> Esqueleto Completo
+        </button>
+        <button class="nav-tab-btn" data-mode="quiz">
+          <span>🧠</span> Quiz & Desafio
+        </button>
+        <button class="nav-tab-btn" data-mode="fractures">
+          <span>🩹</span> Fraturas
+        </button>
+        <button class="nav-tab-btn" data-mode="opme">
+          <span>📋</span> OPMEs
+        </button>
+      </nav>
+
+      <div class="header-status-badge">
+        <span class="pulse-indicator"></span>
+        <span>WebGL 3D Ativo</span>
+      </div>
+    </header>
+
+    <!-- ÁREA DE TRABALHO (3 COLUNAS) -->
+    <main class="workspace-container">
+      
+      <!-- COLUNA 1: SIDEBAR ESQUERDA (CATÁLOGO / LISTA SELETORA) -->
+      <aside class="left-sidebar">
+        <!-- Modo Atlas: Busca e Filtros de Ossos -->
+        <div id="atlas-sidebar-controls">
+          <div class="sidebar-header">
+            <div class="search-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="bone-search-input" class="search-input" placeholder="Buscar osso ou acidente (ex: fêmur, trocanter)..." />
+            </div>
+            <div class="filters-row">
+              <select id="region-filter-select" class="filter-select">
+                <!-- Populado dinamicamente -->
+              </select>
+              <select id="class-filter-select" class="filter-select">
+                <!-- Populado dinamicamente -->
+              </select>
+            </div>
+          </div>
+          <div id="bone-isolation-controls" class="bone-isolation-controls">
+            <div class="bone-selection-summary">
+              <span class="section-label">Visualização</span>
+              <span id="bone-selection-summary" aria-live="polite">Isolado: Fêmur</span>
+            </div>
+            <button type="button" id="show-study-skeleton-btn" class="study-toolbar-btn">
+              Mostrar esqueleto completo
+            </button>
+            <p>Selecione um osso para isolá-lo. Use + nos cartões para montar um conjunto.</p>
+          </div>
+          <div id="bones-list-container" class="items-scroll-list">
+            <!-- Populado dinamicamente via JS -->
+          </div>
+        </div>
+
+        <div id="skeleton-model-controls" class="skeleton-model-controls hidden">
+          <span class="section-label">Modelo para estudo</span>
+          <div class="skeleton-model-buttons">
+            <button type="button" id="skeleton-study-model-btn" class="study-toolbar-btn active" aria-pressed="true">
+              Posição anatômica
+            </button>
+            <button type="button" id="skeleton-ct-model-btn" class="study-toolbar-btn" aria-pressed="false">
+              Tomografia
+            </button>
+          </div>
+          <p>O modelo segmentado permite isolar ossos; a tomografia fica disponível como referência.</p>
+        </div>
+
+        <!-- Modo Articulações: Lista de Articulações -->
+        <div id="joints-sidebar-controls" class="hidden">
+          <div class="sidebar-header">
+            <span class="section-label">Articulações para Estudo</span>
+          </div>
+          <div id="joints-list-container" class="items-scroll-list">
+            <!-- Populado dinamicamente via JS -->
+          </div>
+        </div>
+
+        <div id="fractures-sidebar-controls" class="hidden">
+          <div class="sidebar-header">
+            <label class="section-label" for="fracture-region-filter">Fraturas por região</label>
+            <select id="fracture-region-filter" class="filter-select" aria-label="Filtrar fraturas por região"></select>
+          </div>
+          <div id="fractures-list-container" class="items-scroll-list" aria-live="polite"></div>
+        </div>
+
+        <div id="opme-sidebar-controls" class="hidden">
+          <div class="sidebar-header">
+            <div class="sidebar-heading-row">
+              <span class="section-label">Catálogo local de OPMEs</span>
+              <button type="button" id="new-opme-btn" class="btn-secondary compact-btn">＋ Novo</button>
+            </div>
+            <p class="detail-paragraph small-note">Cadastros e PDFs ficam neste navegador.</p>
+          </div>
+          <div id="opme-list-container" class="items-scroll-list" aria-live="polite"></div>
+        </div>
+      </aside>
+
+      <!-- COLUNA 2: CANVAS 3D INTERATIVO (VIEWPORT) -->
+      <section class="canvas-viewport-container">
+        <!-- HUD Superior Flutuante -->
+        <div class="floating-hud-toolbar">
+          <div class="material-toggle-group">
+            <button class="hud-btn material-toggle-btn active" data-mat="realistic" title="Textura Óssea Realística">
+              <span>🦴</span> Realístico
+            </button>
+            <button class="hud-btn material-toggle-btn" data-mat="xray" title="Modo Radiologia / Negatoscópio">
+              <span>🩻</span> Raio-X
+            </button>
+            <button class="hud-btn material-toggle-btn" data-mat="wireframe" title="Malha Poligonal 3D">
+              <span>🕸️</span> Wireframe
+            </button>
+            <button class="hud-btn material-toggle-btn" data-mat="heatmap" title="Mapa de Carga e Estresse Mecânico">
+              <span>🔥</span> Carga
+            </button>
+          </div>
+
+          <div class="hud-divider"></div>
+
+          <button id="toggle-clipping-btn" class="hud-btn" title="Corte coronal para visualização da cavidade medular interna">
+            <span>✂️</span> Fatiamento Anatômico
+          </button>
+
+          <button id="reset-camera-btn" class="hud-btn" title="Resetar foco da câmera">
+            <span>🎯</span> Centralizar
+          </button>
+
+          <button id="screenshot-btn" class="hud-btn" title="Exportar imagem HD da peça">
+            <span>📷</span> Capturar HD
+          </button>
+        </div>
+
+        <!-- Canvas 3D Three.js -->
+        <div id="canvas-container"
+          role="application"
+          aria-label="Visualizador tridimensional do esqueleto. Use as teclas de seta para girar, mais e menos para ampliar e 0 para centralizar."
+          tabindex="0"></div>
+
+        <!-- HUD Inferior: Controles de movimento e lateralidade articular -->
+        <div id="joint-controls-bar" class="joint-controls-bar hidden">
+          <label class="joint-control-field" for="joint-side-select">
+            <span>Lado</span>
+            <select id="joint-side-select" class="joint-control-select">
+              <option value="right">Direito</option>
+              <option value="left">Esquerdo</option>
+              <option value="bilateral">Bilateral</option>
+            </select>
+          </label>
+          <label class="joint-control-field" for="joint-motion-select">
+            <span>Movimento</span>
+            <select id="joint-motion-select" class="joint-control-select"></select>
+          </label>
+          <label class="joint-range-field" for="joint-angle-slider">
+            <span id="joint-slider-title" class="joint-slider-label">Movimento articular</span>
+            <input type="range" id="joint-angle-slider" class="joint-slider" min="-30" max="30" value="0" />
+            <span id="joint-motion-note" class="joint-motion-note"></span>
+          </label>
+          <span id="joint-angle-val" class="joint-angle-badge" aria-live="polite">0°</span>
+        </div>
+
+        <!-- Dicas de Navegação -->
+        <div class="canvas-nav-hints">
+          Botão esquerdo: Girar 360° • Botão direito: Panorâmica • Scroll: Zoom • Clique nos ossos para isolá-los
+        </div>
+      </section>
+
+      <!-- COLUNA 3: PAINEL LATERAL DIREITO (DOSSIÊ ANATÔMICO, GERADOR 3D E QUIZ) -->
+      <aside class="right-sidebar">
+        
+        <!-- PAINEL 1: DOSSIÊ DO OSSO (MODO ATLAS) -->
+        <div id="atlas-panel" class="detail-container">
+          <div class="detail-section-card">
+            <div id="bone-preview" class="bone-preview" aria-label="Imagem ilustrativa do osso selecionado">
+              <div class="bone-preview-grid"></div>
+              <img id="bone-preview-image" class="bone-preview-photo hidden" alt="" />
+              <svg id="bone-preview-svg" viewBox="0 0 240 240" role="img" aria-label="Ilustração do osso selecionado">
+                <defs>
+                  <linearGradient id="bonePreviewGradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#fffaf0"/>
+                    <stop offset="0.55" stop-color="#dfcfad"/>
+                    <stop offset="1" stop-color="#b9a27e"/>
+                  </linearGradient>
+                </defs>
+                <g id="bone-preview-drawing" fill="url(#bonePreviewGradient)" stroke="#f2ead8" stroke-width="3">
+                  <ellipse cx="120" cy="55" rx="38" ry="24"/>
+                  <path d="M100 72 C108 88 112 112 108 135 C104 160 114 184 120 207 C126 184 136 160 132 135 C128 112 132 88 140 72 Z"/>
+                  <ellipse cx="120" cy="205" rx="48" ry="24"/>
+                </g>
+              </svg>
+              <span id="bone-preview-name" class="bone-preview-name">Fêmur</span>
+            </div>
+            <div class="detail-header-group">
+              <h2 id="bone-detail-title" class="detail-title">Fêmur</h2>
+              <div id="bone-detail-latin" class="detail-latin"><em>Os femoris</em></div>
+              <div class="tags-row">
+                <span id="bone-detail-division" class="meta-tag highlight">Esqueleto Apendicular</span>
+                <span id="bone-detail-region" class="meta-tag">Membro Inferior</span>
+                <span id="bone-detail-class" class="meta-tag">Osso Longo</span>
+              </div>
+            </div>
+            <p id="bone-detail-overview" class="detail-paragraph">
+              O fêmur é o osso mais longo, volumoso e resistente do corpo humano.
+            </p>
+          </div>
+
+          <!-- Acidentes Anatômicos Interativos -->
+          <div class="detail-section-card">
+            <div class="section-label">
+              <span>📍</span> Acidentes Anatômicos & Marcos Ósseos (3D)
+            </div>
+            <p class="detail-paragraph" style="font-size: 11px;">
+              Clique em qualquer acidente anatômico abaixo para focar a câmera 3D:
+            </p>
+            <div id="bone-landmarks-list" class="landmarks-list-scroll">
+              <!-- Populado dinamicamente -->
+            </div>
+          </div>
+
+          <!-- Inserções Musculares -->
+          <div class="detail-section-card">
+            <div class="section-label">
+              <span>💪</span> Principais Inserções Musculares
+            </div>
+            <ul id="bone-muscles-list" class="list-unstyled">
+              <!-- Populado dinamicamente -->
+            </ul>
+          </div>
+
+          <!-- Articulações -->
+          <div class="detail-section-card">
+            <div class="section-label">
+              <span>🔗</span> Articulações Associadas
+            </div>
+            <ul id="bone-articulations-list" class="list-unstyled">
+              <!-- Populado dinamicamente -->
+            </ul>
+          </div>
+
+          <!-- Relevância Clínica -->
+          <div class="detail-section-card clinical-card">
+            <div class="section-label" style="color: var(--accent-amber);">
+              <span>⚠️</span> Relevância Clínica & Traumatologia
+            </div>
+            <p id="bone-detail-clinical" class="clinical-text">
+              Fraturas do colo femoral são frequentes em idosos...
+            </p>
+          </div>
+
+          <!-- Medidas Médias -->
+          <div class="detail-section-card">
+            <div class="section-label">
+              <span>📏</span> Biometria Média (Adulto)
+            </div>
+            <div id="bone-measurements-list">
+              <!-- Populado dinamicamente -->
+            </div>
+          </div>
+
+          <div class="detail-section-card model-source-card">
+            <div class="section-label"><span>🔬</span> Fonte do Modelo 3D</div>
+            <p id="bone-model-source" class="detail-paragraph">
+              Osso real em malha anatômica segmentada individualmente.
+            </p>
+            <a class="model-source-link" href="https://github.com/Charleeh/ecorche" target="_blank" rel="license noopener noreferrer">
+              Écorché · BodyParts3D + Z-Anatomy · CC BY-SA 4.0
+            </a>
+          </div>
+        </div>
+
+        <!-- PAINEL 2: DOSSIÊ DE ARTICULAÇÕES (MODO JOINTS) -->
+        <div id="joints-panel" class="detail-container hidden">
+          <div class="detail-section-card">
+            <div class="detail-header-group">
+              <h2 id="joint-detail-title" class="detail-title">Articulação do Joelho</h2>
+              <div id="joint-detail-latin" class="detail-latin"><em>Articulatio genus</em></div>
+              <div class="tags-row">
+                <span id="joint-detail-structural" class="meta-tag highlight">Sinovial Bicondilar</span>
+                <span id="joint-detail-functional" class="meta-tag">Diartrose</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section-card">
+            <div class="section-label"><span>🦴</span> Ossos Envolvidos</div>
+            <ul id="joint-bones-list" class="list-unstyled"></ul>
+          </div>
+
+          <div class="detail-section-card">
+            <div class="section-label"><span>📐</span> Movimentos & Amplitude (ADM)</div>
+            <p id="joint-detail-motions" class="detail-paragraph"></p>
+          </div>
+
+          <div class="detail-section-card">
+            <div class="section-label"><span>🛡️</span> Ligamentos & Meniscos Principais</div>
+            <div id="joint-ligaments-list"></div>
+          </div>
+
+          <div class="detail-section-card">
+            <div class="section-label"><span>⚡</span> Motores Musculares</div>
+            <div id="joint-muscles-box"></div>
+          </div>
+
+          <div class="detail-section-card clinical-card">
+            <div class="section-label" style="color: var(--accent-amber);"><span>⚠️</span> Patologias e Lesões Comuns</div>
+            <p id="joint-detail-clinical" class="clinical-text"></p>
+          </div>
+
+          <div class="detail-section-card">
+            <div class="section-label"><span>📚</span> Classificação Articular Humana</div>
+            <div id="joint-classes-overview"></div>
+          </div>
+
+          <div class="detail-section-card">
+            <div class="section-label"><span>🔎</span> Referências para amplitudes</div>
+            <ul id="joint-motion-references" class="list-unstyled reference-list"></ul>
+            <p class="detail-paragraph small-note">
+              Amplitudes são faixas didáticas aproximadas, variáveis conforme pessoa, método de medição e posição. O simulador não é exame clínico nem ferramenta diagnóstica.
+            </p>
+          </div>
+        </div>
+
+        <!-- PAINEL 3: GERADOR & MODELADOR 3D PARAMÉTRICO (MODO GENERATOR) -->
+        <div id="generator-panel" class="detail-container hidden">
+          <div class="detail-section-card">
+            <div class="section-label"><span>⚙️</span> Parâmetros Morfológicos do Osso</div>
+            <p class="detail-paragraph" style="margin-bottom: 12px;">
+              Modele as proporções de malhas ósseas reais segmentadas, mantendo seus detalhes anatômicos:
+            </p>
+
+            <div class="generator-control-group">
+              <label class="param-slider-row">
+                <div class="param-label-wrapper">
+                  <span>Osso Alvo a Gerar</span>
+                </div>
+                <select id="generator-bone-select" class="filter-select" style="margin-top: 4px;">
+                  <option value="femur">Fêmur</option>
+                  <option value="umero">Úmero</option>
+                  <option value="vertebra-lombar">Vértebra Lombar</option>
+                  <option value="escapula">Escápula</option>
+                  <option value="cranio">Crânio</option>
+                  <option value="pelvis">Pelve / Quadril</option>
+                  <option value="tibia">Tíbia</option>
+                  <option value="fibula">Fíbula</option>
+                  <option value="radio">Rádio</option>
+                  <option value="ulna">Ulna</option>
+                  <option value="clavicula">Clavícula</option>
+                  <option value="costela">Costela</option>
+                  <option value="patela">Patela</option>
+                  <option value="esterno">Esterno</option>
+                </select>
+              </label>
+
+              <label class="param-slider-row">
+                <div class="param-label-wrapper">
+                  <span>Escala Geral (Tamanho)</span>
+                  <span id="gen-scale-val">1.0x</span>
+                </div>
+                <input type="range" id="gen-scale" class="param-slider" min="0.5" max="1.6" step="0.05" value="1.0" />
+              </label>
+
+              <label class="param-slider-row">
+                <div class="param-label-wrapper">
+                  <span>Proporção lateral (X)</span>
+                  <span id="gen-width-val">1.0x</span>
+                </div>
+                <input type="range" id="gen-width" class="param-slider" min="0.5" max="1.6" step="0.05" value="1.0" />
+              </label>
+
+              <label class="param-slider-row">
+                <div class="param-label-wrapper">
+                  <span>Proporção vertical (Y)</span>
+                  <span id="gen-height-val">1.0x</span>
+                </div>
+                <input type="range" id="gen-height" class="param-slider" min="0.5" max="1.6" step="0.05" value="1.0" />
+              </label>
+
+              <label class="param-slider-row">
+                <div class="param-label-wrapper">
+                  <span>Proporção profundidade (Z)</span>
+                  <span id="gen-depth-val">1.0x</span>
+                </div>
+                <input type="range" id="gen-depth" class="param-slider" min="0.5" max="1.6" step="0.05" value="1.0" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Métricas e Estatísticas 3D da Peça -->
+          <div class="detail-section-card">
+            <div class="section-label"><span>📊</span> Estatísticas Volumétricas & Geométricas</div>
+            <div class="metrics-grid">
+              <div class="metric-box">
+                <div class="metric-title">Triângulos 3D</div>
+                <div id="metric-triangles" class="metric-value">-</div>
+              </div>
+              <div class="metric-box">
+                <div class="metric-title">Vértices</div>
+                <div id="metric-vertices" class="metric-value">-</div>
+              </div>
+              <div class="metric-box">
+                <div class="metric-title">Dimensões Bounding Box</div>
+                <div id="metric-dimensions" class="metric-value" style="font-size: 11px;">-</div>
+              </div>
+              <div class="metric-box">
+                <div class="metric-title">Volume Ósseo</div>
+                <div id="metric-volume" class="metric-value">-</div>
+              </div>
+              <div class="metric-box" style="grid-column: span 2;">
+                <div class="metric-title">Peso Estimado in vivo (Mineral)</div>
+                <div id="metric-weight" class="metric-value">-</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ações de Download e Exportação 3D -->
+          <div class="detail-section-card">
+            <div class="section-label"><span>💾</span> Exportar Modelo 3D</div>
+            <p class="detail-paragraph" style="margin-bottom: 12px;">
+              Baixe o arquivo 3D para impressão física ou importação em softwares de modelagem (Blender, Maya, CAD):
+            </p>
+            <div class="export-actions-row">
+              <button id="export-stl-btn" class="btn-primary">
+                <span>🖨️</span> Baixar STL (Impressão 3D)
+              </button>
+              <button id="export-obj-btn" class="btn-secondary">
+                <span>📦</span> Baixar OBJ (3D Geral)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAINEL 4: MODO QUIZ / DESAFIO (MODO QUIZ) -->
+        <div id="quiz-panel" class="detail-container hidden">
+          <div class="detail-section-card quiz-card">
+            <div class="quiz-header">
+              <span id="quiz-progress">Pergunta 1 de 8</span>
+              <span id="quiz-score" class="quiz-score-badge">Pontuação: 0</span>
+            </div>
+
+            <h3 id="quiz-question-text" class="quiz-question-title">Carregando pergunta...</h3>
+
+            <div id="quiz-options-container" class="quiz-options-group">
+              <!-- Populado dinamicamente -->
+            </div>
+
+            <div id="quiz-explanation-box" class="quiz-explanation-box hidden">
+              <!-- Feedback exibido aqui -->
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 6px;">
+              <button id="quiz-next-btn" class="btn-primary hidden">
+                Próxima Questão ➔
+              </button>
+              <button id="quiz-restart-btn" class="btn-secondary">
+                Reiniciar Teste
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="fractures-panel" class="detail-container hidden">
+          <div id="fracture-detail-content"></div>
+        </div>
+
+        <div id="opme-panel" class="detail-container hidden">
+          <div id="opme-detail-content"></div>
+          <form id="opme-form" class="detail-section-card opme-form hidden">
+            <div class="sidebar-heading-row">
+              <h2 id="opme-form-title" class="detail-title">Cadastrar OPME</h2>
+              <button type="button" id="cancel-opme-form-btn" class="btn-secondary compact-btn">Cancelar</button>
+            </div>
+            <p class="detail-paragraph small-note">
+              Registro para consulta educacional. Os dados e o PDF selecionado são armazenados apenas neste navegador; não há envio ou sincronização.
+            </p>
+            <label class="form-field">
+              <span>Empresa / fabricante <span aria-hidden="true">*</span></span>
+              <input id="opme-company" name="company" type="text" maxlength="100" required autocomplete="organization" />
+            </label>
+            <label class="form-field">
+              <span>Nome do produto ou conjunto <span aria-hidden="true">*</span></span>
+              <input id="opme-name" name="name" type="text" maxlength="120" required />
+            </label>
+            <label class="form-field">
+              <span>Categoria</span>
+              <select id="opme-category" name="category" class="filter-select">
+                <option>Sistemas de placa e parafusos</option>
+                <option>Fixação com parafusos</option>
+                <option>Hastes intramedulares</option>
+                <option>Fixadores externos</option>
+                <option>Implantes protéticos</option>
+                <option>Implantes de coluna</option>
+                <option>Fixação com fios ou parafusos</option>
+                <option>Órteses e imobilização</option>
+                <option>Instrumentais</option>
+                <option>Outra categoria</option>
+              </select>
+            </label>
+            <fieldset class="form-field form-fieldset">
+              <legend>Fraturas relacionadas (opcional)</legend>
+              <div id="opme-fracture-options" class="checkbox-options"></div>
+            </fieldset>
+            <label class="form-field">
+              <span>Técnica cirúrgica / notas do fabricante</span>
+              <textarea id="opme-technique" name="technique" rows="5" maxlength="5000" placeholder="Registre notas de estudo e consulte sempre as instruções oficiais e protocolos institucionais."></textarea>
+            </label>
+            <label class="form-field">
+              <span>Documento PDF da técnica (opcional; até 25 MB)</span>
+              <input id="opme-pdf" name="pdf" type="file" accept="application/pdf,.pdf" />
+            </label>
+            <label id="remove-opme-pdf-row" class="checkbox-option hidden">
+              <input id="remove-opme-pdf" type="checkbox" />
+              <span>Remover PDF atualmente cadastrado</span>
+            </label>
+            <p id="opme-current-pdf" class="detail-paragraph small-note hidden"></p>
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Salvar cadastro local</button>
+            </div>
+          </form>
+        </div>
+
+      </aside>
+    </main>
+  </div>
+
+  <!-- Script Principal da Aplicação -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
